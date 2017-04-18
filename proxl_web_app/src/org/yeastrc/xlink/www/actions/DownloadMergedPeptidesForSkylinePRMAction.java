@@ -31,6 +31,7 @@ import org.yeastrc.xlink.www.objects.AuthAccessLevel;
 import org.yeastrc.xlink.www.objects.WebMergedProteinPosition;
 import org.yeastrc.xlink.www.objects.WebMergedReportedPeptide;
 import org.yeastrc.xlink.www.searcher.ProjectIdsForProjectSearchIdsSearcher;
+import org.yeastrc.xlink.utils.XLinkUtils;
 import org.yeastrc.xlink.www.actions.PeptidesMergedCommonPageDownload.PeptidesMergedCommonPageDownloadResult;
 import org.yeastrc.xlink.www.constants.ServletOutputStreamCharacterSetConstant;
 import org.yeastrc.xlink.www.constants.StrutsGlobalForwardNames;
@@ -165,34 +166,34 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 				ServletOutputStream out = response.getOutputStream();
 				BufferedOutputStream bos = new BufferedOutputStream(out);
 				writer = new OutputStreamWriter( bos , ServletOutputStreamCharacterSetConstant.outputStreamCharacterSet );
-
 				
-				
-				//  Write header line
-				writer.write( "SEARCH ID(S)\tTYPE\tPEPTIDE 1\tPOSITION\tMODS\tPEPTIDE 2\tPOSITION\tMODS\tPROTEIN 1\tPROTEIN 2\tNUM PSMS" );
-				for ( AnnDisplayNameDescPeptPsmListsPair annDisplayNameDescPeptPsmListsPair : peptidesMergedCommonPageDownloadResult.getPeptidePsmAnnotationNameDescListsForEachSearch() ) {
-					for ( AnnotationDisplayNameDescription peptideAnnotationDisplayNameDescription : annDisplayNameDescPeptPsmListsPair.getPeptideAnnotationNameDescriptionList() ) {
-						writer.write( "\tPeptide Value:" );
-						writer.write( peptideAnnotationDisplayNameDescription.getDisplayName() );
-						writer.write( "(SEARCH ID: " );
-						writer.write( Integer.toString( annDisplayNameDescPeptPsmListsPair.getSearchId() ) );
-						writer.write( ")" );
-					}
-					for ( AnnotationDisplayNameDescription psmAnnotationDisplayNameDescription : annDisplayNameDescPeptPsmListsPair.getPsmAnnotationNameDescriptionList() ) {
-						writer.write( "\tBest PSM Value:" );
-						writer.write( psmAnnotationDisplayNameDescription.getDisplayName() );
-						writer.write( "(SEARCH ID: " );
-						writer.write( Integer.toString( annDisplayNameDescPeptPsmListsPair.getSearchId() ) );
-						writer.write( ")" );
-					}
-				}
-				writer.write( "\n" );
+				//writer.write( "# Skyline PRM tool import file\n" );
+				//writer.write( "# Search(es): " + StringUtils.join( searchIds, "," ) + "\n" );
 				
 				for( WebMergedReportedPeptide link : peptidesMergedCommonPageDownloadResult.getWebMergedReportedPeptideList() ) {
+					
+					// should only return cross-linked peptides
+					if( !link.getLinkType().equals( XLinkUtils.CROSS_TYPE_STRING_UPPERCASE ) ) {
+						continue;
+					}
+					
+					writer.write( "0.0\n" );
+					
+					writer.write( link.getPeptide1().getSequence() );
+					writer.write( " " );
+					
+					writer.write( link.getPeptide2().getSequence() );
+					writer.write( " " );
+					
+					
+					
+					
 					List<WebMergedProteinPosition> peptide1ProteinPositions = link.getPeptide1ProteinPositions();
 					List<WebMergedProteinPosition> peptide2ProteinPositions = link.getPeptide2ProteinPositions();
+					
 					String peptide1ProteinPositionsString = XLinkWebAppUtils.getPeptideProteinPositionsString( peptide1ProteinPositions );
 					String peptide2ProteinPositionsString = XLinkWebAppUtils.getPeptideProteinPositionsString( peptide2ProteinPositions );
+					
 					List<Integer> searchIdsForLink = new ArrayList<Integer>( link.getSearches().size() );
 					for( SearchDTO r : link.getSearches() ) { 
 						searchIdsForLink.add( r.getSearchId() ); 
