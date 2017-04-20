@@ -2,6 +2,8 @@ package org.yeastrc.xlink.www.actions;
 
 import java.io.BufferedOutputStream;
 import java.io.OutputStreamWriter;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -36,6 +38,9 @@ import org.yeastrc.xlink.www.objects.WebMergedReportedPeptide;
 import org.yeastrc.xlink.www.searcher.ProjectIdsForProjectSearchIdsSearcher;
 import org.yeastrc.xlink.www.searcher.PsmWebDisplaySearcher;
 import org.yeastrc.xlink.www.searcher.ReportedPeptideIdsForSearchIdsUnifiedPeptideIdSearcher;
+import org.yeastrc.proteomics.mass.MassUtils;
+import org.yeastrc.proteomics.peptide.peptide.Peptide;
+import org.yeastrc.xlink.dto.UnifiedRepPepDynamicModLookupDTO;
 import org.yeastrc.xlink.searcher_psm_peptide_cutoff_objects.SearcherCutoffValuesRootLevel;
 import org.yeastrc.xlink.searcher_psm_peptide_cutoff_objects.SearcherCutoffValuesSearchLevel;
 import org.yeastrc.xlink.utils.XLinkUtils;
@@ -208,18 +213,21 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 						continue;
 					}
 					
-					
-					writer.write( link.getPeptide1().getSequence() );
-					writer.write( " " );
-					
-					writer.write( link.getPeptide2().getSequence() );
-					writer.write( " " );
-					
-					
-					// find all charge states for this peptide in this search
-					Collection<Integer> charges = new HashSet<>();
+					/*
+					 * Construct a set of all distinct lines to print for this reported peptide.
 
-
+					 * E.g., DFNKVPNFSIR IVQKSSGLNMENLANHEHLLSPVR 2823.472@4 1473.764@4 6
+					 * 
+					 * Note that these lines use the linker mass from each distinct search, and use the
+					 * charge states from all PSMs that mapped to this link.
+					 * 
+					 * Strategy will be to construct each line as a string and add to set, allowing
+					 * for the uniqueness of the strings in the set to remove redundant lines.
+					 * 
+					 */
+					
+					Collection<String> lineStrings = new HashSet<>();
+					
 					
 					//  Process links
 					int unifiedReportedPeptideId = link.getUnifiedReportedPeptideId();
@@ -249,65 +257,86 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 											eachSearchIdToProcess, 
 											reportedPeptideId, 
 											searcherCutoffValuesSearchLevel);
-							for ( PsmWebDisplayWebServiceResult psmWebDisplay : psms ) {
-								charges.add( psmWebDisplay.getCharge() );
+							for ( PsmWebDisplayWebServiceResult psm : psms ) {
+
+								// now iterating over the PSMs for this reported peptide in a given search
+								
+								
+								String line = "";
+								
+								line += link.getPeptide1().getSequence() + " ";
+								line += link.getPeptide2().getSequence() + " ";
+								
+								List<String> peptide1Mods = new ArrayList<>();
+								List<String> peptide2Mods = new ArrayList<>();
+								
+								// add a mod string for the cross-linked peptide as a mod
+								
+								{
+								
+									BigDecimal modMass1 = psm.getPsmDTO().getLinkerMass();
+									BigDecimal modMass2 = psm.getPsmDTO().getLinkerMass();									
+									
+									//
+									Peptide yrcPeptide1 = new Peptide( link.getPeptide1().getSequence() );
+									Peptide yrcPeptide2 = new Peptide( link.getPeptide2().getSequence() );
+									
+									
+									modMass1 = modMass1.add( new BigDecimal( yrcPeptide2.getMass( MassUtils.MASS_TYPE_MONOISOTOPIC ) ) );
+									modMass2 = modMass2.add( new BigDecimal( yrcPeptide1.getMass( MassUtils.MASS_TYPE_MONOISOTOPIC ) ) );
+																	
+									modMass1 = modMass1.setScale( 5, RoundingMode.CEILING );		// set to 5 decimal places
+									modMass2 = modMass2.setScale( 5, RoundingMode.CEILING );		// set to 5 decimal places
+									
+									
+									peptide1Mods.add( modMass1.toString() + "@" + link.getPeptide1Position() );
+									peptide2Mods.add( modMass2.toString() + "@" + link.getPeptide2Position() );
+									
+								}
+								
+								// now add in other mods on the peptide
+								
+								// peptide 1
+								{
+									
+									List<UnifiedRepPepDynamicModLookupDTO> mods = link.getMergedSearchPeptideCrosslink().getUnifiedRpDynamicModListPeptide1();
+									if( mods != null && mods.size() > 0 ) {
+										
+										for( UnifiedRepPepDynamicModLookupDTO mod : mods ) {
+											peptide1Mods.add( mod.getMassRoundedString() + "@" + mod.getPosition() );
+										}
+									}
+								}
+								
+								
+								// peptide 2
+								{
+									
+									List<UnifiedRepPepDynamicModLookupDTO> mods = link.getMergedSearchPeptideCrosslink().getUnifiedRpDynamicModListPeptide2();
+									if( mods != null && mods.size() > 0 ) {
+										
+										for( UnifiedRepPepDynamicModLookupDTO mod : mods ) {
+											peptide2Mods.add( mod.getMassRoundedString() + "@" + mod.getPosition() );
+										}
+									}
+								}
+							
+								line += StringUtils.join( peptide1Mods, "," ) + " ";
+								line += StringUtils.join( peptide2Mods, "," ) + " ";
+								
+								line += psm.getPsmDTO().getCharge() + "\n";
+								
+								lineStrings.add( line );
 							}
 						}
 					}
 					
 					
+					// write out all the distinct lineStrings for this reported peptide
+					for( String line : lineStrings ) {
+						writer.write( line );
+					}					
 					
-						
-						
-					
-					
-					
-					
-					List<WebMergedProteinPosition> peptide1ProteinPositions = link.getPeptide1ProteinPositions();
-					List<WebMergedProteinPosition> peptide2ProteinPositions = link.getPeptide2ProteinPositions();
-					
-					String peptide1ProteinPositionsString = XLinkWebAppUtils.getPeptideProteinPositionsString( peptide1ProteinPositions );
-					String peptide2ProteinPositionsString = XLinkWebAppUtils.getPeptideProteinPositionsString( peptide2ProteinPositions );
-					
-					List<Integer> searchIdsForLink = new ArrayList<Integer>( link.getSearches().size() );
-					for( SearchDTO r : link.getSearches() ) { 
-						searchIdsForLink.add( r.getSearchId() ); 
-					}
-					Collections.sort( searchIdsForLink );
-					writer.write( StringUtils.join( searchIdsForLink, "," ) );
-					writer.write( "\t" );
-					writer.write( link.getLinkType() );
-					writer.write( "\t" );
-					writer.write( link.getPeptide1().getSequence() );
-					writer.write( "\t" );
-					writer.write( link.getPeptide1Position() );
-					writer.write( "\t" );
-					writer.write( link.getModsStringPeptide1() );
-					writer.write( "\t" );
-					if ( link.getPeptide2() != null ) {
-						writer.write( link.getPeptide2().getSequence() );
-					}
-					writer.write( "\t" );
-					writer.write( link.getPeptide2Position() );
-					writer.write( "\t" );
-					writer.write( link.getModsStringPeptide2() );
-					writer.write( "\t" );
-					writer.write( peptide1ProteinPositionsString );
-					writer.write( "\t" );
-					writer.write( peptide2ProteinPositionsString );
-					writer.write( "\t" );
-					writer.write( Integer.toString( link.getNumPsms() ) );
-					for ( AnnValuePeptPsmListsPair annValuePeptPsmListsPair : link.getPeptidePsmAnnotationValueListsForEachSearch() ) {
-						for ( String peptideAnnotationValue : annValuePeptPsmListsPair.getPeptideAnnotationValueList() ) {
-							writer.write( "\t" );
-							writer.write( peptideAnnotationValue );
-						}
-						for ( String psmAnnotationValue : annValuePeptPsmListsPair.getPsmAnnotationValueList() ) {
-							writer.write( "\t" );
-							writer.write( psmAnnotationValue );
-						}
-					}
-					writer.write( "\n" );
 				}
 			} finally {
 				try {
