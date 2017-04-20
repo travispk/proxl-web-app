@@ -269,30 +269,71 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 								
 								List<String> peptide1Mods = new ArrayList<>();
 								List<String> peptide2Mods = new ArrayList<>();
+																
+								// TODO: check for static mods on cysteines?
 								
-								// add a mod string for the cross-linked peptide as a mod
 								
+								// create a mod to add to peptide1, for the cross-linked residue
 								{
-								
-									BigDecimal modMass1 = psm.getPsmDTO().getLinkerMass();
-									BigDecimal modMass2 = psm.getPsmDTO().getLinkerMass();									
-									
-									//
-									Peptide yrcPeptide1 = new Peptide( link.getPeptide1().getSequence() );
-									Peptide yrcPeptide2 = new Peptide( link.getPeptide2().getSequence() );
 									
 									
-									modMass1 = modMass1.add( new BigDecimal( yrcPeptide2.getMass( MassUtils.MASS_TYPE_MONOISOTOPIC ) ) );
-									modMass2 = modMass2.add( new BigDecimal( yrcPeptide1.getMass( MassUtils.MASS_TYPE_MONOISOTOPIC ) ) );
+									Peptide otherPeptide = new Peptide( link.getPeptide2().getSequence() );
+									
+									// get mods of other peptide
+									List<UnifiedRepPepDynamicModLookupDTO> mods = link.getMergedSearchPeptideCrosslink().getUnifiedRpDynamicModListPeptide2();
+
+									double modsSum = 0;
+									if( mods != null && mods.size() > 0 ) {
+										
+										for( UnifiedRepPepDynamicModLookupDTO mod : mods ) {
+											modsSum += mod.getMass();											
+										}
+									}
+									
+									BigDecimal modMass = psm.getPsmDTO().getLinkerMass();
+
+									modMass = modMass.add( new BigDecimal( otherPeptide.getMass( MassUtils.MASS_TYPE_MONOISOTOPIC ) ) );
+									modMass = modMass.add( new BigDecimal( modsSum ) );
 																	
-									modMass1 = modMass1.setScale( 5, RoundingMode.CEILING );		// set to 5 decimal places
-									modMass2 = modMass2.setScale( 5, RoundingMode.CEILING );		// set to 5 decimal places
+									modMass = modMass.setScale( 5, RoundingMode.CEILING );		// set to 5 decimal places
 									
 									
-									peptide1Mods.add( modMass1.toString() + "@" + link.getPeptide1Position() );
-									peptide2Mods.add( modMass2.toString() + "@" + link.getPeptide2Position() );
+									peptide1Mods.add( modMass.toString() + "@" + link.getPeptide1Position() );
 									
 								}
+								
+								
+								
+								// create a mod to add to peptide2, for the cross-linked residue
+								{
+									
+									
+									Peptide otherPeptide = new Peptide( link.getPeptide1().getSequence() );
+									
+									// get mods of other peptide
+									List<UnifiedRepPepDynamicModLookupDTO> mods = link.getMergedSearchPeptideCrosslink().getUnifiedRpDynamicModListPeptide1();
+
+									double modsSum = 0;
+									if( mods != null && mods.size() > 0 ) {
+										
+										for( UnifiedRepPepDynamicModLookupDTO mod : mods ) {
+											modsSum += mod.getMass();											
+										}
+									}
+									
+									BigDecimal modMass = psm.getPsmDTO().getLinkerMass();
+
+									modMass = modMass.add( new BigDecimal( otherPeptide.getMass( MassUtils.MASS_TYPE_MONOISOTOPIC ) ) );
+									modMass = modMass.add( new BigDecimal( modsSum ) );
+																	
+									modMass = modMass.setScale( 5, RoundingMode.CEILING );		// set to 5 decimal places
+									
+									
+									peptide2Mods.add( modMass.toString() + "@" + link.getPeptide2Position() );
+									
+								}
+								
+								
 								
 								// now add in other mods on the peptide
 								
