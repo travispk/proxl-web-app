@@ -3,6 +3,7 @@ package org.yeastrc.xlink.www.actions;
 import java.io.BufferedOutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -24,13 +25,19 @@ import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.yeastrc.xlink.www.dao.SearchDAO;
 import org.yeastrc.xlink.www.dto.SearchDTO;
+import org.yeastrc.xlink.www.exceptions.ProxlWebappDataException;
 import org.yeastrc.xlink.www.objects.AnnDisplayNameDescPeptPsmListsPair;
 import org.yeastrc.xlink.www.objects.AnnValuePeptPsmListsPair;
 import org.yeastrc.xlink.www.objects.AnnotationDisplayNameDescription;
 import org.yeastrc.xlink.www.objects.AuthAccessLevel;
+import org.yeastrc.xlink.www.objects.PsmWebDisplayWebServiceResult;
 import org.yeastrc.xlink.www.objects.WebMergedProteinPosition;
 import org.yeastrc.xlink.www.objects.WebMergedReportedPeptide;
 import org.yeastrc.xlink.www.searcher.ProjectIdsForProjectSearchIdsSearcher;
+import org.yeastrc.xlink.www.searcher.PsmWebDisplaySearcher;
+import org.yeastrc.xlink.www.searcher.ReportedPeptideIdsForSearchIdsUnifiedPeptideIdSearcher;
+import org.yeastrc.xlink.searcher_psm_peptide_cutoff_objects.SearcherCutoffValuesRootLevel;
+import org.yeastrc.xlink.searcher_psm_peptide_cutoff_objects.SearcherCutoffValuesSearchLevel;
 import org.yeastrc.xlink.utils.XLinkUtils;
 import org.yeastrc.xlink.www.actions.PeptidesMergedCommonPageDownload.PeptidesMergedCommonPageDownloadResult;
 import org.yeastrc.xlink.www.constants.ServletOutputStreamCharacterSetConstant;
@@ -146,7 +153,10 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 
 				
 				
-				
+				////////////
+				/////   Searcher cutoffs for all searches
+				SearcherCutoffValuesRootLevel searcherCutoffValuesRootLevel =
+						peptidesMergedCommonPageDownloadResult.searcherCutoffValuesRootLevel;
 				
 				
 				
@@ -170,6 +180,27 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 				//writer.write( "# Skyline PRM tool import file\n" );
 				//writer.write( "# Search(es): " + StringUtils.join( searchIds, "," ) + "\n" );
 				
+				/*
+
+					From Jimmy Eng:
+
+					Here's what I would expect the exported file to look like (ideally with more accurate mass numbers):
+					
+					0.0
+					DFNKVPNFSIR IVQKSSGLNMENLANHEHLLSPVR 2823.472@4 1473.764@4 6
+					
+					The value of 2823.472 corresponds to the mass of peptide IVQKSSGLNMENLANHEHLLSPVR (2685.402068) plus mass of crosslinker 138.07.  And the mass 1473.764 is the mass of peptide DFNKVPNFSIR (1335.693535) plus mass of crosslinker 138.07.  It would be great to have at least 4 digits of precision in the encoded mass modification strings.
+					
+					If there are any other modifications on the peptide, encode them in the same way.  For example, presume the methionine on the peptide IVQKSSGLNMENLANHEHLLSPVR  is modified with oxidation (15.994915).  The second modification string would change from
+					   1473.764@4
+					to
+					   1473.764@4,15.9959@10
+
+				 */
+				
+				
+				writer.write( "0.0\n" );
+				
 				for( WebMergedReportedPeptide link : peptidesMergedCommonPageDownloadResult.getWebMergedReportedPeptideList() ) {
 					
 					// should only return cross-linked peptides
@@ -177,13 +208,57 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 						continue;
 					}
 					
-					writer.write( "0.0\n" );
 					
 					writer.write( link.getPeptide1().getSequence() );
 					writer.write( " " );
 					
 					writer.write( link.getPeptide2().getSequence() );
 					writer.write( " " );
+					
+					
+					// find all charge states for this peptide in this search
+					Collection<Integer> charges = new HashSet<>();
+
+
+					
+					//  Process links
+					int unifiedReportedPeptideId = link.getUnifiedReportedPeptideId();
+					//  Process for each search id:
+					for ( SearchDTO search : searches ) {
+						int eachProjectSearchIdToProcess = search.getProjectSearchId();
+						Integer eachSearchIdToProcess = search.getSearchId();
+						
+						SearcherCutoffValuesSearchLevel searcherCutoffValuesSearchLevel = 
+								searcherCutoffValuesRootLevel.getPerSearchCutoffs( eachProjectSearchIdToProcess );
+						if ( searcherCutoffValuesSearchLevel == null ) {
+							String msg = "searcherCutoffValuesRootLevel.getPerSearchCutoffs(projectSearchId) returned null for:  " + eachProjectSearchIdToProcess;
+							log.error( msg );
+							throw new ProxlWebappDataException( msg );
+						}
+						
+						//  First get list of reported peptide ids for unifiedReportedPeptideId and search id
+						List<Integer> reportedPeptideIdList = 
+								ReportedPeptideIdsForSearchIdsUnifiedPeptideIdSearcher.getInstance()
+								.getReportedPeptideIdsForSearchIdsAndUnifiedReportedPeptideId( eachSearchIdToProcess, unifiedReportedPeptideId );
+						//  Process each search id, reported peptide id pair
+						for ( int reportedPeptideId : reportedPeptideIdList ) {
+							//  Process Each search id/reported peptide id for the link
+							//  Get the PSMs for a Peptide/Search combination and output the records
+							List<PsmWebDisplayWebServiceResult> psms = 
+									PsmWebDisplaySearcher.getInstance().getPsmsWebDisplay( 
+											eachSearchIdToProcess, 
+											reportedPeptideId, 
+											searcherCutoffValuesSearchLevel);
+							for ( PsmWebDisplayWebServiceResult psmWebDisplay : psms ) {
+								charges.add( psmWebDisplay.getCharge() );
+							}
+						}
+					}
+					
+					
+					
+						
+						
 					
 					
 					
