@@ -40,6 +40,8 @@ import org.yeastrc.xlink.www.searcher.PsmWebDisplaySearcher;
 import org.yeastrc.xlink.www.searcher.ReportedPeptideIdsForSearchIdsUnifiedPeptideIdSearcher;
 import org.yeastrc.proteomics.mass.MassUtils;
 import org.yeastrc.proteomics.peptide.peptide.Peptide;
+import org.yeastrc.xlink.dao.StaticModDAO;
+import org.yeastrc.xlink.dto.StaticModDTO;
 import org.yeastrc.xlink.dto.UnifiedRepPepDynamicModLookupDTO;
 import org.yeastrc.xlink.searcher_psm_peptide_cutoff_objects.SearcherCutoffValuesRootLevel;
 import org.yeastrc.xlink.searcher_psm_peptide_cutoff_objects.SearcherCutoffValuesSearchLevel;
@@ -236,6 +238,9 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 						int eachProjectSearchIdToProcess = search.getProjectSearchId();
 						Integer eachSearchIdToProcess = search.getSearchId();
 						
+						// static mods for this search
+						List<StaticModDTO> staticMods = StaticModDAO.getInstance().getStaticModDTOForSearchId( search.getSearchId() );
+						
 						SearcherCutoffValuesSearchLevel searcherCutoffValuesSearchLevel = 
 								searcherCutoffValuesRootLevel.getPerSearchCutoffs( eachProjectSearchIdToProcess );
 						if ( searcherCutoffValuesSearchLevel == null ) {
@@ -279,14 +284,27 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 									
 									Peptide otherPeptide = new Peptide( link.getPeptide2().getSequence() );
 									
+									
 									// get mods of other peptide
 									List<UnifiedRepPepDynamicModLookupDTO> mods = link.getMergedSearchPeptideCrosslink().getUnifiedRpDynamicModListPeptide2();
-
+																		
 									double modsSum = 0;
+									
+									// handle the dynamic mods
 									if( mods != null && mods.size() > 0 ) {
 										
 										for( UnifiedRepPepDynamicModLookupDTO mod : mods ) {
 											modsSum += mod.getMass();											
+										}
+									}
+									
+									// handle the static mods
+									if( staticMods != null && staticMods.size() > 0 ) {
+										for( StaticModDTO staticMod : staticMods ) {
+											BigDecimal mass = staticMod.getMass();
+											int count = getNumberOfTimesResidueOccurs( staticMod.getResidue(), otherPeptide.getSequence() );
+											
+											modsSum += mass.doubleValue() * (double)count;
 										}
 									}
 									
@@ -314,10 +332,22 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 									List<UnifiedRepPepDynamicModLookupDTO> mods = link.getMergedSearchPeptideCrosslink().getUnifiedRpDynamicModListPeptide1();
 
 									double modsSum = 0;
+									
+									// handle the dynamic mods
 									if( mods != null && mods.size() > 0 ) {
 										
 										for( UnifiedRepPepDynamicModLookupDTO mod : mods ) {
 											modsSum += mod.getMass();											
+										}
+									}
+									
+									// handle the static mods
+									if( staticMods != null && staticMods.size() > 0 ) {
+										for( StaticModDTO staticMod : staticMods ) {
+											BigDecimal mass = staticMod.getMass();
+											int count = getNumberOfTimesResidueOccurs( staticMod.getResidue(), otherPeptide.getSequence() );
+											
+											modsSum += mass.doubleValue() * (double)count;
 										}
 									}
 									
@@ -401,4 +431,11 @@ public class DownloadMergedPeptidesForSkylinePRMAction extends Action {
 			throw e;
 		}
 	}
+	
+	private int getNumberOfTimesResidueOccurs( String residue, String sequence ) {
+		
+		return StringUtils.countMatches( sequence,  residue );
+	}
+
+	
 }
